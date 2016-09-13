@@ -9,7 +9,7 @@ class MCMCLDA:
         self.n_topics = n_topics        # N_z
         self.n_poses = n_poses          # N_y
         self.vocab_size = vocab_size    # N_x
-        
+
         self.alpha  = alpha
         self.beta   = beta
         self.gamma  = np.ones(len(cm))
@@ -35,18 +35,18 @@ class MCMCLDA:
         self.nyw = np.zeros((self.n_poses, self.vocab_size))
         # number of times that pose y and motion pattern z co-occur
         self.nyz = np.zeros((self.n_poses, self.n_topics))
-        # number of times that motion pattern z_t is followed by mottion pattern z_{t-1) 
+        # number of times that motion pattern z_t is followed by mottion pattern z_{t-1)
         self.nzt_min = np.zeros((self.n_topics, self.n_topics, len(self.cm)))
         # number of times that motion pattern z_{t+1} is followed by motion pattern z_t
         self.nzt_pls = np.zeros((self.n_topics, self.n_topics, len(self.cm)))
-        
+
         self.nm = np.zeros(self.n_docs)
         self.nw = np.zeros(self.vocab_size)
         self.ny = np.zeros(self.n_poses)
         self.nz = np.zeros(self.n_topics)
         self.nz_min = np.zeros((self.n_topics, len(self.cm)))
         self.nz_pls = np.zeros((self.n_topics, len(self.cm)))
-        
+
         self.poses = {}
         self.topics = {}
         self.labels = np.zeros((self.n_docs,), dtype=np.int)
@@ -54,11 +54,11 @@ class MCMCLDA:
         self.labels = np.copy(self.true_labels)
 
         for m in xrange(self.n_docs):
-            # loop through document's time            
+            # loop through document's time
             for t in xrange(len(self.matrix[m])):
                 # randomize motion segment / topic
                 z = np.random.randint(self.n_topics)
-                
+
                 self.topics[(m, t)] = z
                 self.nz[z] += 1
 
@@ -67,7 +67,7 @@ class MCMCLDA:
                     self.nzt_pls[(self.topics[(m, t-1)], z, self.labels[m])] += 1
                     self.nz_min[(self.topics[(m, t-1)], self.labels[m])] += 1
                     self.nz_pls[(z, self.labels[m])] += 1
-                
+
                 for i, w in enumerate(self.matrix[m][t][:]):
                     # randomize pose
                     y = np.random.randint(self.n_poses)
@@ -88,7 +88,7 @@ class MCMCLDA:
         }
         u = LoadSavePickle()
         u.dump(filename, params)
-        
+
     def _load_parameter(self, paramtype='params'):
         if (paramtype == 'malgireddy'):
             self.alpha = 0.34
@@ -105,7 +105,7 @@ class MCMCLDA:
 
     def _topic_likelihood(self, m, t):
         z = self.topics[(m, t)]
-        
+
         yt = np.zeros(self.n_poses)
         for i, w in enumerate(self.matrix[m][t][:]):
             y = self.poses[(m, t, i)]
@@ -142,7 +142,7 @@ class MCMCLDA:
             zt = self.topics[(m, t)]
             z_min = self.topics[(m, t-1)]
             z_pls = self.topics[(m, t+1)]
-            
+
             if (self.nz_min[(z_min, c)] > 0): self.nz_min[(z_min, c)] -= 1 ##
             if (self.nz_pls[(z_pls, c)] > 0): self.nz_pls[(z_pls, c)] -= 1 ##
 
@@ -151,12 +151,12 @@ class MCMCLDA:
                 if self.nzt_min[(z, z_min, c)] > 0: ##
                     self.nzt_min[(z, z_min, c)] -= 1
                     aflag = True
-                    
+
                 bflag = False
                 if self.nzt_pls[(z, z_pls, c)] > 0: ##
                     self.nzt_pls[(z, z_pls, c)] -= 1
                     bflag = True
-                
+
                 if (z <> z_min):
                     # 1st condition
                     left[z] = (self.nzt_min[(z, z_min, c)] + self.gamma[c]) / (self.nz_min[(z_min, c)] + self.n_topics * self.gamma[c])
@@ -170,10 +170,10 @@ class MCMCLDA:
                         # 3rd condition
                         left[z] = (self.nzt_min[(z, z_min, c)] + self.gamma[c]) / (self.nz_min[(z_min, c)] + self.n_topics * self.gamma[c])
                         right[z] = (self.nzt_pls[(z, z_pls, c)] + self.gamma[c]) / (self.nz_pls[(z_pls, c)] + 1 + self.n_topics * self.gamma[c])
-                        
+
                 if aflag: self.nzt_min[(z, z_min, c)] += 1 ##
                 if bflag: self.nzt_pls[(z, z_pls, c)] += 1 ##
-                
+
             self.nz_min[(z_min, c)] += 1
             self.nz_pls[(z_pls, c)] += 1
 
@@ -187,7 +187,7 @@ class MCMCLDA:
         p_y = left * right
         p_y /= np.sum(p_y) if np.sum(p_y) > 0 else 1 # normalize to obtain probabilities
         return p_y
-        
+
     def _topic_distribution(self, c, m, z, t):
         left = self._topic_likelihood(m, t)
         right = self._topic_prior(c, m, t)
@@ -206,18 +206,18 @@ class MCMCLDA:
         self.samples = []
 
         if maxiter > 1: print "Starting Gibbs sampling (maxiter=%d, burnin=%d, lag=%d)" % (maxiter, burnin, lag),
-        
+
         for it in xrange(1, maxiter + 1):
             if maxiter > 1: print "\nIteration %d of %d" % (it, maxiter),
-            
+
             for m in xrange(self.n_docs):
                 c = self.labels[m]
                 if verbose: print "\nDocument %d (est=%d, tru=%d)" % (m, c, self.true_labels[m])
-                
+
                 for t in xrange(len(self.matrix[m])):
                     z = self.topics[(m, t)]
                     if verbose: print "\tt = %d, z_old = %d" % (t, z)
-                    
+
                     # update pose y
                     for i, w in enumerate(self.matrix[m][t][:]):
                         y = self.poses[(m, t, i)]
@@ -236,7 +236,7 @@ class MCMCLDA:
                         self.ny[y] += 1
                         self.nyz[y, z] += 1
                         self.poses[(m, t, i)] = y
-                        
+
                     # update topic (motion segment) z
                     if (self.nz[z] > 0): self.nz[z] -= 1 ##
 
@@ -268,7 +268,7 @@ class MCMCLDA:
             if (it > burnin) and ((it-burnin) % lag == 0):
                 if verbose: print "Sampled on iteration #%d" % it
                 # hyperparameters estimation
-                self._est_params()             
+                self._est_params()
                 # sampling z for Viterbi
                 sample = []
                 for m in xrange(self.n_docs):
@@ -308,7 +308,7 @@ class MCMCLDA:
                     obs[c][i].append(-1)
 
         return obs
-        
+
     def _classify(self, X, est):
         assert self.model is not None
 
@@ -317,7 +317,7 @@ class MCMCLDA:
         for x in X:
             while (len(x) < sz):
                 x.append(-1)
-        
+
         score = self.model[est].score(X)
         return score
 
@@ -325,12 +325,12 @@ class MCMCLDA:
         # Gibbs sampling on training data
         #self._load_parameter(paramtype='malgireddy')
         self._run(verbose=False)
-        
+
         # estimate MCMCLDA parameters from samples
         self.alpha = self.alpha_est
         self.beta = self.beta_est
         self.gamma = self.gamma_est
-        
+
         print
         print 'Alpha =', self.alpha
         print 'Beta =', self.beta
@@ -345,7 +345,7 @@ class MCMCLDA:
             X = np.array(obs[c])
             self.model.update({c: hmm.GaussianHMM(n_components=len(self.cm))})
             self.model[c].fit([X])
-        
+
         # save parameters
         print "Saving parameters ..."
         self._save_parameter()
@@ -358,19 +358,3 @@ class MCMCLDA:
         obs = self._get_sample()
         score = self._classify(obs[est], est)
         return score
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            
